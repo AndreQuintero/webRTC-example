@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <title>Websockets Chat App</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <link rel="shortcut icon" href="./figure.png">
+</head>
+<body>
+    <div class="video-wrap">
+        <label>remote</label>
+        <video width="300" height="300"  id="receiver-video" playsinline autoplay></video>
+    </div>
+
+    <label>local</label>
+    <video  id="emitter-video" width="300" height="300"  playsinline autoplay></video>
+    <video  id="emitter-screen" width="300" height="300"  playsinline autoplay></video>
+    <button onclick="start()">start</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.4.0/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<script src="simplepeer.js"></script>
+
+<script>
+
+    let stompClient = null;
+    let user;
+    const connect = () => {
+        let socket = new SockJS('http://localhost:8081/video-chat'); // video-call
+      //  let socket = new SockJS('http://localhost:8081/video-call'); // video-call
+        stompClient = Stomp.over(socket);
+        stompClient.connect({},  (frame) => {
+            console.log('Connected: ' + frame);
+            stompClient.subscribe('/topic/public',  (response) => {
+                console.log('resposta detectada');
+                console.log(response);
+            });
+            stompClient.subscribe('/topic/stream',  (response) => {
+                let resp = JSON.parse(response.body);
+                if(resp.user !== user) {
+                    incoming(resp.data);
+                }
+                
+
+            });
+       });
+    }
+    
+    const disconnect = () => {
+        if (stompClient !== null) {
+            stompClient.disconnect();
+        }
+        console.log("Disconnected");
+    }
+    
+    const newUser = (name) => {
+        const  obj = {name};
+        stompClient.send("/app/chat.user", {}, JSON.stringify(obj));
+        user = name;
+    }
+    
+    const sendMessage = (user, message) => {
+        const mensagem = {
+    
+            messageType: "CHAT",
+    
+            content: message,
+    
+            sender: user,
+    
+            time: new Date()
+        };
+    
+        stompClient.send("/app/chat.messages", {}, JSON.stringify(mensagem));
+    }
+    
+    </script>
+<script>
+ 
+ 
+let p = null;     
+const start = (user) => {
+    navigator.getUserMedia({audio: false, video: true}, 
+        stream => {
+            p = new SimplePeer({
+                initiator: true,
+                stream: stream,
+                trickle: false
+            });
+            bindingEvents(p, user);
+            let emitterVideo = document.getElementById("emitter-video");
+            emitterVideo.srcObject = stream;
+           
+        },
+        err => console.log(err)
+    );
+};
+
+const startScreen = async (user) => {
+    let usermedia = await navigator.mediaDevices.getDisplayMedia({video:true, audio: true});
+    p = new SimplePeer({
+                initiator: true,
+                stream: usermedia,
+                trickle: false
+            });
+    bindingEvents(p, user);
+    let emiterScreen = document.getElementById('emitter-screen');
+    emiterScreen.srcObject = usermedia;
+    console.log(usermedia)
+};
+
+const bindingEvents = (p) => {
+
+    p.on('error', err => console.log(err))
+
+    p.on('signal', (data) => {
+        const obj = {
+            user: user,
+            data: JSON.stringify(data)
+        }
+        stompClient.send("/app/chat.stream", {}, JSON.stringify(obj));
+    });
+
+    p.on('stream', stream => {
+
+        let receiverVideo = document.getElementById("receiver-video");
+        receiverVideo.srcObject = stream;
+    })
+};
+
+const incoming = (data) => {
+    if(p == null) {
+         p = new SimplePeer({
+            initiator: false,
+            trickle: false
+        });
+
+        bindingEvents(p);
+    }
+    p.signal(JSON.parse(data));
+  
+}
+   
+</script>
+
+
+</body>
+</html>
